@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5 text-center">
+    <h1 class="mb-4 display-4 fw-bold text-primary">Adaptive Threat Mitigation Response Engine</h1>
+    <p class="lead mb-4">AI-Powered Cyber Threat Detection and Automated Remediation System</p>
+    <div class="d-flex justify-content-center gap-3 mb-4">
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg"><i class="fas fa-sign-in-alt"></i> Login</a>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-success btn-lg"><i class="fas fa-user-plus"></i> Register</a>
+        <a href="{{ url_for('admin.admin_login') }}" class="btn btn-dark btn-lg"><i class="fas fa-user-shield"></i> Admin Login</a>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card bg-dark border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Key Features & Technologies</h3>
+                </div>
+                <div class="card-body text-start">
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="fas fa-check-circle text-success me-2"></i> Real-time cyber threat detection using AI/ML models</li>
+                        <li><i class="fas fa-check-circle text-success me-2"></i> Automated remediation and incident response</li>
+                        <li><i class="fas fa-check-circle text-success me-2"></i> User and admin dashboards for monitoring and management</li>
+                        <li><i class="fas fa-check-circle text-success me-2"></i> Blockchain-based audit trail for user actions and predictions</li>
+                        <li><i class="fas fa-check-circle text-success me-2"></i> Secure authentication and role-based access</li>
+                        <li><i class="fas fa-check-circle text-success me-2"></i> Built with Flask, SQLAlchemy, Bootstrap, and Chart.js</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

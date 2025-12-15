@@ -9,7 +9,7 @@ import numpy as np
 from ml_models.threat_classifier import ThreatClassifier
 from ml_models.anomaly_detector import AnomalyDetector
 import logging
-
+from sqlalchemy import func
 threat_bp = Blueprint('threat', __name__)
 logger = logging.getLogger(__name__)
 
@@ -291,6 +291,147 @@ def add_security_rule():
             'success': False,
             'message': f'Error creating security rule: {str(e)}'
         }), 500
+@threat_bp.route('/api/demo/detect-bruteforce', methods=['POST'])
+@login_required
+def detect_bruteforce_demo():
+    """
+    REAL (DB-based) brute force detector:
+    Detects > threshold failed logins (log_type='login_failed') from same IP in last N minutes.
+    Creates a Threat + Alert so you can show it in the UI.
+    """
+    try:
+        window_minutes = int(request.form.get('window_minutes', 10))
+        threshold = int(request.form.get('threshold', 5))
+
+        window_start = datetime.utcnow() - timedelta(minutes=window_minutes)
+
+        # Find suspicious IPs from DB logs (these logs come from auth.py on failed login)
+        suspicious = (
+            db.session.query(Log.ip_address, func.count(Log.id).label("fail_count"))
+            .filter(Log.log_type == "login_failed")
+            .filter(Log.timestamp >= window_start)
+            .filter(Log.ip_address.isnot(None))
+            .group_by(Log.ip_address)
+            .having(func.count(Log.id) > threshold)
+            .all()
+        )
+
+        created = 0
+        results = []
+
+        for ip, fail_count in suspicious:
+            # Avoid duplicates: if we already created a recent brute_force threat for same IP, skip
+            existing = (
+                Threat.query
+                .filter_by(threat_type="brute_force", source_ip=ip, status="active")
+                .order_by(Threat.date_detected.desc())
+                .first()
+            )
+            if existing and existing.date_detected >= window_start:
+                results.append({"ip": ip, "fail_count": int(fail_count), "created": False, "reason": "already exists"})
+                continue
+
+            # Severity based on how big the spike is
+            if fail_count >= threshold + 15:
+                severity = "critical"
+            elif fail_count >= threshold + 8:
+                severity = "high"
+            else:
+                severity = "medium"
+
+            confidence = min(0.95, 0.60 + (0.02 * int(fail_count)))
+
+            threat = Threat(
+                name="Brute force login attempts detected",
+                description=f"More than {threshold} failed login attempts from the same IP within {window_minutes} minutes.",
+                threat_type="brute_force",
+                severity=severity,
+                confidence=confidence,
+                status="active",
+                source_ip=ip,
+                attack_vector="Password attack"
+            )
+            threat.set_indicators({
+                "failed_attempts": int(fail_count),
+                "window_minutes": window_minutes,
+                "rule": f"count(login_failed) > {threshold} in {window_minutes}m"
+            })
+
+            db.session.add(threat)
+            db.session.commit()
+
+            alert = Alert(
+                title=f"Brute Force detected from {ip}",
+                description=f"{fail_count} failed logins in last {window_minutes} minutes from {ip}.",
+                priority=severity,
+                status="new",
+                threat_id=threat.id,
+                user_id=current_user.id
+            )
+            db.session.add(alert)
+
+            # Log that detection happened
+            log = Log(
+                source="threat_detection",
+                log_type="bruteforce_detected",
+                message=f"Brute force rule triggered for {ip}: {fail_count} failed logins in {window_minutes} minutes",
+                user_id=current_user.id,
+                severity="warning",
+                ip_address=ip
+            )
+            db.session.add(log)
+
+            db.session.commit()
+
+            created += 1
+            results.append({"ip": ip, "fail_count": int(fail_count), "created": True, "severity": severity})
+
+        return jsonify({
+            "success": True,
+            "window_minutes": window_minutes,
+            "threshold": threshold,
+            "matches": len(suspicious),
+            "created_threats": created,
+            "results": results
+        })
+
+    except Exception as e:
+        logger.error(f"Error in brute force demo detection: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
+@threat_bp.route('/api/alerts/poll', methods=['GET'])
+@login_required
+def poll_alerts():
+    """
+    Returns latest NEW alerts for the logged-in user.
+    """
+    alerts = (Alert.query
+              .filter_by(status='new', user_id=current_user.id)
+              .order_by(Alert.created_at.desc() if hasattr(Alert, 'created_at') else Alert.id.desc())
+              .limit(5)
+              .all())
+
+    return jsonify({
+        "success": True,
+        "alerts": [{
+            "id": a.id,
+            "title": a.title,
+            "description": a.description,
+            "priority": a.priority,
+            "threat_id": a.threat_id
+        } for a in alerts]
+    })
+@threat_bp.route('/api/alerts/<int:alert_id>/delivered', methods=['POST'])
+@login_required
+def mark_alert_delivered(alert_id):
+    alert = Alert.query.get_or_404(alert_id)
+
+    if alert.user_id != current_user.id:
+        return jsonify({"success": False}), 403
+
+    alert.status = "delivered"
+    db.session.commit()
+
+    return jsonify({"success": True})
 
 # Simulation functions for demo purposes
 def simulate_threat_detection(scan_type, target_ip):

@@ -146,7 +146,7 @@
                     <div class="list-group-item bg-dark text-light border-light-subtle">
                         <div class="d-flex w-100 justify-content-between">
                             <h6 class="mb-1">{{ activity.type }}</h6>
-                            <small class="text-muted">{{ activity.timestamp|timeago }}</small>
+                            <small class="text-muted">{{ activity.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
                         </div>
                         <p class="mb-1 small">{{ activity.message }}</p>
                     </div>

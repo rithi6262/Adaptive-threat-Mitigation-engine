@@ -41,7 +41,7 @@ class XAMPPConfig(Config):
     DB_NAME = 'cybersecurity'  # Database name to create in phpMyAdmin
     DB_HOST = 'localhost'  # Default XAMPP host
     
-    SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+    SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:3307/{DB_NAME}"
     
 
 # Dictionary of available configurations

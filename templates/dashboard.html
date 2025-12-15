@@ -1,3 +1,6 @@
+<button id="runBruteforceDetect" class="btn btn-danger">
+  Run Brute Force Detection (Demo)
+</button>
 {% extends "layout.html" %}
 
 {% block content %}
@@ -257,12 +260,16 @@
                                             </div>
                                             <div class="mb-3">
                                                 <label for="timeFrame" class="form-label">Time Frame</label>
-                                                <select class="form-select" id="timeFrame" name="time_frame" required>
+                                                <select class="form-select" id="timeFrame" name="time_frame" onchange="showCustomTimeframe(this.value)" required>
                                                     <option value="24h">Next 24 Hours</option>
                                                     <option value="7d">Next 7 Days</option>
                                                     <option value="30d">Next 30 Days</option>
                                                     <option value="custom">Custom...</option>
                                                 </select>
+                                                <div id="customTimeframeDiv" class="mt-2 d-none">
+                                                    <label for="customTimeframe" class="form-label">Specify Custom Time Frame (days)</label>
+                                                    <input type="number" class="form-control" id="customTimeframe" name="custom_timeframe" min="1" max="365" value="14">
+                                                </div>
                                             </div>
                                             <div class="mb-3">
                                                 <label for="dataSources" class="form-label">Data Sources</label>
@@ -283,6 +290,12 @@
                                                     <label class="form-check-label" for="systemMetrics">System Metrics</label>
                                                 </div>
                                             </div>
+                                            <div class="mb-3">
+                                                <label for="specificThreats" class="form-label">Specific Threats to Include (optional)</label>
+                                                <input type="text" class="form-control" id="specificThreats" name="specific_threats" placeholder="E.g., SQL Injection, XSS, Malware">
+                                                <small class="form-text text-muted">Enter comma-separated threats to focus the analysis</small>
+                                            </div>
+                                            
                                             <div class="mb-3">
                                                 <label for="confidenceThreshold" class="form-label">
                                                     Confidence Threshold: <span id="confidenceValue">70</span>%
@@ -358,48 +371,60 @@
         </div>
     </div>
 
-    <!-- Security Actions -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card bg-dark">
-                <div class="card-header">
-                    <h5 class="card-title mb-0"><i class="fas fa-shield-alt"></i> Security Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <div class="d-grid">
-                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#networkScanModal">
-                                    <i class="fas fa-network-wired"></i> Network Scan
-                                </button>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="d-grid">
-                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#logAnalysisModal">
-                                    <i class="fas fa-search"></i> Log Analysis
-                                </button>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="d-grid">
-                                <a href="{{ url_for('remediation.remediation_dashboard') }}" class="btn btn-outline-primary">
-                                    <i class="fas fa-wrench"></i> Remediation
-                                </a>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="d-grid">
-                                <a href="{{ url_for('settings') }}" class="btn btn-outline-primary">
-                                    <i class="fas fa-cog"></i> System Settings
-                                </a>
-                            </div>
+   <!-- Security Actions -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-shield-alt"></i> Security Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-primary btn-lg" data-bs-toggle="modal" data-bs-target="#networkScanModal">
+                                <i class="fas fa-network-wired"></i> Network Scan
+                            </button>
                         </div>
                     </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-primary btn-lg" data-bs-toggle="modal" data-bs-target="#logAnalysisModal">
+                                <i class="fas fa-search"></i> Log Analysis
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('remediation.remediation_dashboard') }}" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-wrench"></i> Remediation
+                            </a>
+                        </div>
+                    </div>
+                    <!-- Removed System Settings button -->
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+
+<!-- Blockchain Ledger for Admins -->
+{% if current_user.is_authenticated and current_user.role == 'admin' %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="fas fa-link"></i> Blockchain Ledger</h5>
+                <button id="refreshLedgerBtn" class="btn btn-sm btn-outline-info">Refresh Ledger</button>
+            </div>
+            <div class="card-body">
+                <div id="blockchainLedger" style="max-height: 300px; overflow-y: auto; font-size: 0.95em;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 </div>
 {% endblock %}
 
@@ -408,6 +433,69 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Load all dashboard charts
         loadDashboardCharts();
+
+        // Blockchain Ledger fetch for admin
+        {% if current_user.is_authenticated and current_user.role == 'admin' %}
+        function fetchLedger() {
+            fetch('/admin/blockchain_ledger')
+                .then(res => res.json())
+                .then(data => {
+                    const ledgerDiv = document.getElementById('blockchainLedger');
+                    if (data.ledger && data.ledger.length > 0) {
+                        ledgerDiv.innerHTML = data.ledger.map(block =>
+                            `<div class='border-bottom pb-2 mb-2'>
+                                <strong>Index:</strong> ${block.index} | <strong>Time:</strong> ${new Date(block.timestamp * 1000).toLocaleString()}<br>
+                                <strong>Action:</strong> ${block.data.action || 'N/A'} | <strong>User:</strong> ${block.data.username || ''}<br>
+                                <strong>Data:</strong> <pre style='white-space:pre-wrap;word-break:break-all;'>${JSON.stringify(block.data, null, 2)}</pre>
+                                <strong>Hash:</strong> <span style='font-size:0.8em;'>${block.hash}</span>
+                            </div>`
+                        ).join('');
+                    } else {
+                        ledgerDiv.innerHTML = '<em>No blockchain data available.</em>';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('blockchainLedger').innerHTML = '<span class="text-danger">Failed to load ledger.</span>';
+                });
+        }
+        document.getElementById('refreshLedgerBtn').addEventListener('click', fetchLedger);
+        // Auto-load on page load
+        fetchLedger();
+        {% endif %}
     });
+    // Function to show/hide custom timeframe input
+    function showCustomTimeframe(value) {
+        const customDiv = document.getElementById('customTimeframeDiv');
+        if (value === 'custom') {
+            customDiv.classList.remove('d-none');
+        } else {
+            customDiv.classList.add('d-none');
+        }
+    }
+    async function runBruteforceDetection() {
+  try {
+    const res = await fetch("/api/demo/detect-bruteforce", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "window_minutes=10&threshold=5"
+    });
+    const data = await res.json();
+    console.log("Bruteforce detection result:", data);
+    return data;
+  } catch (e) {
+    console.error("Failed to run bruteforce detection", e);
+  }
+}
+
+window.addEventListener("load", () => {
+  const btn = document.getElementById("runBruteforceDetect");
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      await runBruteforceDetection();
+      // Optionally trigger polling immediately
+      pollAlerts();
+    });
+  }
+});
 </script>
 {% endblock %}

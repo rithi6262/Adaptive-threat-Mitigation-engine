@@ -1,3 +1,6 @@
+# SecurityRule model (required by threat_detection.py)
+
+
 from app import db
 from flask_login import UserMixin
 from datetime import datetime
@@ -30,6 +33,7 @@ class User(UserMixin, db.Model):
     def __repr__(self):
         return f'<User {self.username}>'
 
+    
 class Threat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -130,6 +134,19 @@ class SystemSettings(db.Model):
     def __repr__(self):
         return f'<SystemSetting {self.setting_name}>'
 
+
+# Prediction model must be defined after db is initialized
+class Prediction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    prediction_type = db.Column(db.String(50), nullable=False)
+    result = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship('User', backref='predictions')
+
+    def __repr__(self):
+        return f'<Prediction {self.id} by User {self.user_id}>'
+    
 class SecurityRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -139,6 +156,6 @@ class SecurityRule(db.Model):
     status = db.Column(db.String(20), default='active')
     created_on = db.Column(db.DateTime, default=datetime.utcnow)
     updated_on = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     def __repr__(self):
         return f'<SecurityRule {self.name}>'

@@ -1,3 +1,5 @@
+# Blockchain API route for admin to view ledger
+
 import os
 import logging
 import random
@@ -7,6 +9,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, current_user, login_required
 from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timedelta
+
+# Blockchain integration
+from blockchain import Blockchain
+
+# Initialize blockchain (local, in-memory)
+blockchain = Blockchain()
 
 
 # Configure logging
@@ -50,12 +58,12 @@ with app.app_context():
     from auth import auth_bp
     from threat_detection import threat_bp
     from remediation import remediation_bp
-    
+    from admin import admin_bp
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(threat_bp)
     app.register_blueprint(remediation_bp)
-    
+    app.register_blueprint(admin_bp)
     # Create all database tables
     db.create_all()
 
@@ -67,9 +75,7 @@ def load_user(user_id):
 # Define routes
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('auth.login'))
+    return render_template('home.html', title='Home')
 
 @app.route('/dashboard')
 def dashboard():
@@ -109,6 +115,14 @@ def dashboard():
                           prediction_results=prediction_results,
                           title='Security Dashboard')
 
+@app.route('/admin/blockchain_ledger')
+@login_required
+def blockchain_ledger():
+    # Only allow admin users (adjust as needed for your admin logic)
+    if not hasattr(current_user, 'role') or current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+    chain = blockchain.get_chain()
+    return jsonify({'ledger': chain})
 @app.route('/threats')
 def threats():
     if not current_user.is_authenticated:
@@ -158,8 +172,28 @@ def settings():
 def profile():
     if not current_user.is_authenticated:
         return redirect(url_for('auth.login'))
-    
-    return render_template('profile.html', title='User Profile')
+
+    # Add a block to blockchain when user views their profile (for demo/audit)
+    block_data = {
+        'action': 'view_profile',
+        'user_id': current_user.id,
+        'username': current_user.username,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    blockchain.add_block(block_data)
+
+    # Gather stats for the user (customize as needed)
+    stats = {
+        'threats_detected': getattr(current_user, 'threats_detected', 0),
+        'remediation_actions': getattr(current_user, 'remediation_actions', 0),
+        'scans_initiated': getattr(current_user, 'scans_initiated', 0),
+        'login_count': getattr(current_user, 'login_count', 0)
+    }
+
+    # Provide an empty list for user_activities if not set
+    user_activities = []
+
+    return render_template('profile.html', title='User Profile', stats=stats, user_activities=user_activities)
 
 @app.errorhandler(404)
 def not_found_error(error):
@@ -215,9 +249,24 @@ def predict_threats():
         # Get prediction parameters from the form
         prediction_type = request.form.get('prediction_type', 'threat_likelihood')
         time_frame = request.form.get('time_frame', '24h')
+
+        # Handle custom timeframe
+        if time_frame == 'custom':
+            custom_days = request.form.get('custom_timeframe', '14')
+            try:
+                custom_days = int(custom_days)
+                if custom_days < 1:
+                    custom_days = 14
+                elif custom_days > 365:
+                    custom_days = 365
+                time_frame = f"{custom_days}d"
+            except ValueError:
+                time_frame = '14d'
+
         data_sources = request.form.getlist('data_sources[]')
+        specific_threats = request.form.get('specific_threats', '')
         confidence_threshold = int(request.form.get('confidence_threshold', 70))
-        
+
         # Log the prediction request
         log = models.Log(
             source="prediction",
@@ -228,13 +277,10 @@ def predict_threats():
         )
         db.session.add(log)
         db.session.commit()
-        
-        # In a real system, we would use the threat_classifier and anomaly_detector ML models
-        # For now, we'll simulate results based on the parameters
-        
+
         # Import classifier and detector from threat_detection.py
         from threat_detection import threat_classifier, anomaly_detector
-        
+
         # Generate prediction results based on type
         prediction_results = generate_prediction_results(
             prediction_type, 
@@ -242,19 +288,48 @@ def predict_threats():
             data_sources, 
             confidence_threshold
         )
-        
+
+
+        # Store prediction in database
+        try:
+            from models import Prediction
+            pred = Prediction(
+                user_id=current_user.id,
+                prediction_type=prediction_type,
+                result=json.dumps(prediction_results),
+                timestamp=datetime.utcnow()
+            )
+            db.session.add(pred)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Could not save prediction: {e}")
+
+        # Add a block to blockchain for this prediction event
+        block_data = {
+            'action': 'predict_threats',
+            'user_id': current_user.id,
+            'username': current_user.username,
+            'prediction_type': prediction_type,
+            'time_frame': time_frame,
+            'data_sources': data_sources,
+            'confidence_threshold': confidence_threshold,
+            'timestamp': datetime.utcnow().isoformat(),
+            'prediction_results': prediction_results
+        }
+        blockchain.add_block(block_data)
+
         # Store results in session for the dashboard to display
         session['prediction_results'] = prediction_results
-        
+
         flash('Threat prediction generated successfully', 'success')
         return redirect(url_for('dashboard'))
-        
+
     except Exception as e:
         logger.error(f"Error generating threat prediction: {str(e)}")
         flash(f'An error occurred while generating prediction: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
 
-def generate_prediction_results(prediction_type, time_frame, data_sources, confidence_threshold):
+def generate_prediction_results(prediction_type, time_frame, data_sources, confidence_threshold, specific_threats=None):
     """Generate simulated prediction results based on parameters"""
     # Base score based on confidence threshold
     base_score = confidence_threshold
@@ -295,6 +370,26 @@ def generate_prediction_results(prediction_type, time_frame, data_sources, confi
         {"name": "Credential Stuffing", "probability": random.randint(45, 75), "badge_class": "bg-info text-dark"},
         {"name": "Insider Threat", "probability": random.randint(30, 65), "badge_class": "bg-info text-dark"}
     ]
+    
+    # Filter threats based on specific_threats parameter if provided
+    if specific_threats:
+        # Split comma-separated string into list of threats
+        threat_names = [t.strip().lower() for t in specific_threats.split(',') if t.strip()]
+        
+        if threat_names:
+            # Filter threats that match or partially match the provided names
+            filtered_threats = []
+            for threat in common_threats:
+                for name in threat_names:
+                    if name in threat['name'].lower():
+                        # Boost the probability for specifically requested threats
+                        threat['probability'] = min(95, threat['probability'] + 10)
+                        filtered_threats.append(threat)
+                        break
+            
+            # If we found matching threats, use them
+            if filtered_threats:
+                common_threats = filtered_threats
     
     # Select a subset of threats based on prediction type and sort by probability
     selected_threats = sorted(

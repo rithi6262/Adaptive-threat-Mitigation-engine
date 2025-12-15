@@ -530,3 +530,62 @@ function getStatusClass(status) {
             return 'bg-secondary';
     }
 }
+// --- Desktop Notification Alerts (polling) ---
+let notifPermissionAsked = false;
+
+async function requestNotifPermissionOnce() {
+  if (!("Notification" in window)) return;
+
+  if (Notification.permission === "default" && !notifPermissionAsked) {
+    notifPermissionAsked = true;
+    await Notification.requestPermission();
+  }
+}
+
+function showDesktopNotification(alert) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  const n = new Notification(`🚨 ${alert.title}`, {
+    body: alert.description || "Security alert detected",
+  });
+
+  // Optional: open threat details when clicked
+  n.onclick = () => {
+    if (alert.threat_id) {
+      window.location.href = `/threat/${alert.threat_id}`;
+    }
+    window.focus();
+  };
+}
+
+async function markDelivered(alertId) {
+  try {
+    await fetch(`/api/alerts/${alertId}/delivered`, { method: "POST" });
+  } catch (e) {
+    console.error("Failed to mark delivered", e);
+  }
+}
+
+async function pollAlerts() {
+  try {
+    const res = await fetch("/api/alerts/poll");
+    const data = await res.json();
+    if (!data.success) return;
+
+    // Show popups for all "new" alerts and mark delivered
+    for (const a of data.alerts) {
+  showDesktopNotification(a);
+   await markDelivered(a.id);  // ❌ COMMENT THIS FOR NOW
+}
+  } catch (e) {
+    console.error("Alert poll failed", e);
+  }
+}
+
+// Start polling after page loads
+window.addEventListener("load", async () => {
+  await requestNotifPermissionOnce();
+  pollAlerts();                 // run once immediately
+  setInterval(pollAlerts, 5000); // every 5 seconds
+});

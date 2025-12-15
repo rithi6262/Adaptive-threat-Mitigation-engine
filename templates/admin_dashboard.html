@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Admin Dashboard</h1>
+    <!-- Admin Navbar -->
+    <ul class="nav nav-tabs mb-4 justify-content-center">
+        <li class="nav-item">
+            <a class="nav-link active" href="#profiles" data-bs-toggle="tab">User Profiles</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#predictions" data-bs-toggle="tab">User Predictions</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#blockchain" data-bs-toggle="tab">Blockchain Ledger</a>
+        </li>
+        <li class="nav-item ms-auto">
+            <a class="nav-link text-danger" href="{{ url_for('admin.admin_logout') }}">Logout</a>
+        </li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="profiles">
+            <div class="card bg-dark mb-4">
+                <div class="card-header"><h4 class="mb-0">User Profiles</h4></div>
+                <div class="card-body p-0">
+                    <table class="table table-dark table-striped mb-0">
+                        <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th></tr></thead>
+                        <tbody>
+                        {% for user in users %}
+                        <tr><td>{{ user.id }}</td><td>{{ user.username }}</td><td>{{ user.email }}</td><td>{{ user.role }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="predictions">
+            <div class="card bg-dark mb-4">
+                <div class="card-header"><h4 class="mb-0">User Predictions</h4></div>
+                <div class="card-body">
+                    {% if predictions and predictions|length > 0 %}
+                    <table class="table table-dark table-striped mb-0">
+                        <thead><tr><th>ID</th><th>User</th><th>Type</th><th>Result</th><th>Timestamp</th></tr></thead>
+                        <tbody>
+                        {% for pred in predictions %}
+                        <tr>
+                            <td>{{ pred.id }}</td>
+                            <td>{{ pred.user.username if pred.user else pred.user_id }}</td>
+                            <td>{{ pred.prediction_type }}</td>
+                            <td>{{ pred.result }}</td>
+                            <td>{{ pred.timestamp }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="alert alert-info mb-0">No predictions found. Implement your Prediction model logic.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="blockchain">
+            <div class="card bg-dark mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Blockchain Ledger</h4>
+                    <button id="verifyChainBtn" class="btn btn-outline-info btn-sm">Verify Chain Integrity</button>
+                </div>
+                <div class="card-body" style="max-height:350px;overflow-y:auto;font-size:0.95em;">
+                    <div id="chainResult" class="mb-3"></div>
+                    {% for block in ledger %}
+                    <div class="border-bottom pb-2 mb-2">
+                        <strong>Index:</strong> {{ block.index }}<br>
+                        <strong>Timestamp:</strong> {{ block.timestamp | safe }}<br>
+                        <strong>Action:</strong> {{ block.data.action or 'N/A' }}<br>
+                        <strong>User:</strong> {{ block.data.username or '' }}<br>
+                        <!-- Data hidden for privacy -->
+                        <strong>Hash:</strong> <span style="font-size:0.8em;word-break:break-all;">{{ block.hash }}</span><br>
+                        <strong>Previous Hash:</strong> <span style="font-size:0.8em;word-break:break-all;">{{ block.previous_hash }}</span>
+                        {% if not loop.first %}
+                        <div class="text-info small mt-1">&#8595; Links to previous block</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Activate tab from navbar click
+    document.addEventListener('DOMContentLoaded', function() {
+        var triggerTabList = [].slice.call(document.querySelectorAll('.nav-link[data-bs-toggle="tab"]'));
+        triggerTabList.forEach(function(triggerEl) {
+            triggerEl.addEventListener('click', function (e) {
+                e.preventDefault();
+                var tabTrigger = new bootstrap.Tab(triggerEl);
+                tabTrigger.show();
+            });
+        });
+
+        // Blockchain chain verification
+        document.getElementById('verifyChainBtn').addEventListener('click', function() {
+            // Gather block hashes and previous_hashes from the DOM
+            const blocks = Array.from(document.querySelectorAll('#blockchain .card-body > div.border-bottom'));
+            let valid = true;
+            let lastHash = null;
+            for (let i = 0; i < blocks.length; i++) {
+                const hash = blocks[i].querySelector('span').innerText.trim();
+                const prevHash = blocks[i].querySelectorAll('span')[1]?.innerText.trim();
+                if (i > 0 && prevHash !== lastHash) {
+                    valid = false;
+                    break;
+                }
+                lastHash = hash;
+            }
+            const resultDiv = document.getElementById('chainResult');
+            if (valid) {
+                resultDiv.innerHTML = '<span class="badge bg-success">Blockchain is valid and unbroken!</span>';
+            } else {
+                resultDiv.innerHTML = '<span class="badge bg-danger">Blockchain integrity check failed! Chain is broken or tampered.</span>';
+            }
+        });
+    });
+</script>
+{% endblock %}
