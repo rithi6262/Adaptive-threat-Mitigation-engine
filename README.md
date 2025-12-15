@@ -125,10 +125,6 @@ When a threat is detected:
 
 This project is intended for educational purposes only. Please use responsibly and legally.
 
-## Contributors
-
-- Your Name
-- (Add your team members here)
 
 ## Acknowledgments
 
