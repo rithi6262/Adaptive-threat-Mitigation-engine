@@ -1,4 +1,4 @@
-# AI-Powered Cyber Threat Detection and Automated Remediation System
+# Adaptive-threat-Mitigation-engine
 
 A comprehensive cybersecurity platform that combines AI/ML techniques with security best practices to detect, analyze, and remediate cyber threats automatically.
 
